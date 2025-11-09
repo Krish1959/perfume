@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Perfume — Local HTML + FastAPI</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- Local CSS (works for file:// and http:// when served together) -->
+  <link rel="stylesheet" href="./perfume.css" />
+</head>
+<body>
+  <main class="perfume-app">
+    <!-- A: Avatar label -->
+    <div class="avatar-title">Avatar: <span id="aname">—</span></div>
+
+    <!-- B: Avatar stage -->
+    <section class="avatar-stage">
+      <video id="avatarVideo" playsinline muted></video>
+      <audio id="avatarAudio"></audio>
+      <div id="audioGate" class="avatar-overlay">
+        <button id="enableBtn" type="button">🔊 Tap to enable sound</button>
+      </div>
+    </section>
+
+    <!-- C: viewer status line -->
+    <div id="viewerStatus" class="status-bar">Click “Start Session” to initialize the avatar…</div>
+
+    <!-- D/E/F: input + main controls -->
+    <section class="controls-wrap">
+      <textarea id="editBox" class="transcribe-box" placeholder="Message…">Hello, who are you?</textarea>
+
+      <div class="chat-buttons">
+        <button id="btn-mic" class="mic-button">🎙️ Start Recording</button>
+        <button id="btn-send-avatar">💬 Send to Avatar</button>
+      </div>
+
+      <div class="chat-buttons">
+        <button id="btn-instruction">Instruction</button>
+        <button id="btn-chatgpt">Send to ChatGPT</button>
+        <button id="btn-start">▶ Start Session</button>
+        <button id="btn-stop">⏹ Stop Session</button>
+      </div>
+    </section>
+
+    <!-- K: tiles -->
+    <h3 style="margin:24px 4px 10px">Perfume Collection</h3>
+    <section id="perfumeGrid" class="perfume-gallery">
+      <figure class="perfume-item" data-say="Endless mountains & rivers.">
+        <img src="./assets/1_Endless_rivers.png" alt="Endless Mountains & Rivers" />
+        <figcaption>Endless Mountains & Rivers</figcaption>
+      </figure>
+
+      <figure class="perfume-item" data-say="Flowing gently into calm.">
+        <img src="./assets/2_Flowing_Calm.png" alt="Flowing Calm" />
+        <figcaption>Flowing Gently Into Calm</figcaption>
+      </figure>
+
+      <figure class="perfume-item" data-say="Stillness in the mountains. Quiet strength.">
+        <img src="./assets/3_Still_Mountain.png" alt="Stillness in the Mountains" />
+        <figcaption>Stillness in the Mountains</figcaption>
+      </figure>
+
+      <figure class="perfume-item" data-say="Wind through wooden frames.">
+        <img src="./assets/4_Wind_Frames.png" alt="Wind Through Wooden Frames" />
+        <figcaption>Wind Through Wooden Frames</figcaption>
+      </figure>
+
+      <figure class="perfume-item" data-say="Rain in the hills.">
+        <img src="./assets/5_Rain_hills.png" alt="Rain in the Hills" />
+        <figcaption>Rain in the Hills</figcaption>
+      </figure>
+    </section>
+
+    <!-- On-page debug console (bottom) -->
+    <h3 style="margin:26px 4px 10px">Debug Console</h3>
+    <textarea id="uiDebug" class="transcribe-box" style="min-height:130px" readonly></textarea>
+  </main>
+
+  <!-- Fix the chosen avatar/voice/pose (can still be overridden by .env on the backend) -->
+  <script>
+    window.HEYGEN_FIXED = {
+      avatar_id: "June_HR_public",
+      voice_id:  "68dedac41a9f46a6a4271a95c733823c",
+      pose_name: "June HR"
+    };
+  </script>
+
+  <script src="./perfume.js"></script>
+</body>
+</html>

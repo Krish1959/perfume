@@ -597,4 +597,46 @@ def health():
         "has_openai": bool(os.getenv("OPENAI_API_KEY")),
         "has_heygen": bool(os.getenv("HEYGEN_API_KEY")),
     }
+# ---- Simple LLM helper so /api/perfume-explain works ----
+import os, requests
+from fastapi import Body
+
+OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip()
+OPENAI_BASE = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")  # pick any you have access to
+
+@app.post("/api/perfume-explain")
+def perfume_explain(payload: dict = Body(...)):
+    """
+    payload: { "title": "...", "note": "...", "style": "..." }
+    returns: { "text": "..." }
+    """
+    if not OPENAI_API_KEY:
+        raise HTTPException(500, "OPENAI_API_KEY not set")
+
+    # build a simple prompt from tiles
+    title = (payload.get("title") or "").strip()
+    note  = (payload.get("note") or "").strip()
+    style = (payload.get("style") or "crisp").strip()
+
+    prompt = f"Explain the theme '{title}'. Extra: {note}. Style: {style}. 120 words."
+
+    r = requests.post(
+        f"{OPENAI_BASE}/chat/completions",
+        headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
+                 "Content-Type": "application/json"},
+        json={"model": OPENAI_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.3},
+        timeout=30
+    )
+    try:
+        j = r.json()
+    except Exception:
+        raise HTTPException(502, f"OpenAI error: {r.text[:200]}")
+
+    if r.status_code >= 400:
+        raise HTTPException(502, f"OpenAI error: {j}")
+
+    text = (j.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
+    return {"text": text or "(no content)"}
+
 

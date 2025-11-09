@@ -1,6 +1,12 @@
 // -----------------------------------------------------
 // API base: works for both file:// and http://
-window.API_BASE = (location.protocol === "file:") ? "http://localhost:8000" : "";
+// If index.html already set window.API_BASE, keep it.
+if (!window.API_BASE || typeof window.API_BASE !== "string") {
+  window.API_BASE =
+    (location.protocol === "file:" || location.hostname === "localhost")
+      ? "http://localhost:8000"
+      : "";
+}
 
 // ---------- helpers ----------
 function $(id){ return document.getElementById(id); }
@@ -53,7 +59,7 @@ let RTC_CONFIG = { iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }] };
     await flog("frontend", "perfume.js loaded", { api_base: window.API_BASE, ping: r.status });
     setStatus("Ready.");
   } catch (e) {
-    await flog("frontend", "perfume.js load error", { err: String(e) }, "ERROR");
+    await flog("frontend", "perfume.js load error", { err: String(e), api_base: window.API_BASE }, "ERROR");
     setStatus("Backend not reachable at " + window.API_BASE);
   }
 })();
@@ -90,7 +96,7 @@ async function startSession() {
     });
     j = await r.json().catch(()=>({}));
     await flog("viewer", "/api/start-session response", { http: r.status, body: j });
-    if (r.status >= 400) throw new Error("start-session failed");
+    if (r.status >= 400 || !j.offer_sdp) throw new Error("start-session failed or no offer_sdp");
   } catch (e) {
     await flog("viewer", "start-session failed", { err: String(e) }, "ERROR");
     setStatus("init error (start-session)");
@@ -206,7 +212,7 @@ instrBtn.addEventListener("click", async () => {
   sendBtn.click();
 });
 
-// ---------- ChatGPT (now calls /api/chat again)
+// ---------- ChatGPT ----------
 gptBtn.addEventListener("click", async () => {
   const text = (editBox.value || "").trim();
   if (!text) {
@@ -218,7 +224,7 @@ gptBtn.addEventListener("click", async () => {
 
   try {
     const fd = new FormData();
-    fd.append("text", text || "Hello"); // still works if box is empty
+    fd.append("text", text || "Hello");
 
     const r = await fetch(`${window.API_BASE}/api/chat`, { method: "POST", body: fd });
     const j = await r.json().catch(()=>({}));
@@ -232,7 +238,6 @@ gptBtn.addEventListener("click", async () => {
     const reply = (j && j.response ? j.response : "").trim();
     if (reply) {
       editBox.value = reply;
-      // optionally also speak it if session is active
       if (SESSION_ID && SESSION_TOKEN) {
         const payload = { session_id: SESSION_ID, session_token: SESSION_TOKEN, text: reply };
         fetch(`${window.API_BASE}/api/send-task`, {
@@ -249,7 +254,7 @@ gptBtn.addEventListener("click", async () => {
   }
 });
 
-// ---------- mic + voicechat (unchanged) ----------
+// ---------- mic + voicechat ----------
 let mediaRecorder = null, chunks = [], audioCtx = null, analyser = null, sourceNode = null, raf = 0;
 let recT0 = 0;
 
@@ -347,7 +352,6 @@ async function explainPerfume(name) {
   const nm = (name || "").trim();
   if (!nm) return;
 
-  // Keep legacy behaviour: speak the label immediately
   editBox.value = nm;
   await flog("tiles", "tile pressed", { name: nm });
   if (SESSION_ID && SESSION_TOKEN) {
@@ -359,7 +363,6 @@ async function explainPerfume(name) {
     }).catch(()=>{});
   }
 
-  // Ask backend for detailed explanation and then speak it
   try {
     setStatus("Getting perfume details…");
     const fd = new FormData();
@@ -394,11 +397,9 @@ $("perfumeGrid").addEventListener("click", async (e) => {
   const fig = e.target.closest(".perfume-item");
   if (!fig) return;
 
-  // Avoid optional-chaining for maximum compatibility
   const cap = fig.querySelector("figcaption");
   const say = (fig.getAttribute("data-say") || (cap ? cap.textContent : "") || "").trim();
   if (!say) return;
 
-  // NEW behavior: send to avatar (immediate) + ask OpenAI for detailed explanation
   explainPerfume(say);
 });

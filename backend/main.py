@@ -587,3 +587,14 @@ async def transcribe(file: UploadFile = File(...)):
 @app.get("/api/ping")
 def ping():
     return {"ok": True}
+# =====================================================
+# API Check
+# =====================================================
+@app.get("/api/health")
+def health():
+    return {
+        "ok": True,
+        "has_openai": bool(os.getenv("OPENAI_API_KEY")),
+        "has_heygen": bool(os.getenv("HEYGEN_API_KEY")),
+    }
+

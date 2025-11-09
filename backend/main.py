@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
 
 import requests
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Body
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -62,18 +62,45 @@ WHISPER_LANG_HINT      = os.getenv("WHISPER_LANG_HINT")
 WHISPER_FALLBACK_MODEL = os.getenv("WHISPER_FALLBACK_MODEL", "").strip()
 AUDIO_DYNAUDNORM       = os.getenv("AUDIO_DYNAUDNORM", "true").lower() == "true"
 
-HEYGEN_BASE = "https://api.heygen.com/v1"
-API_STREAM_NEW       = f"{HEYGEN_BASE}/streaming.new"
-API_CREATE_TOKEN     = f"{HEYGEN_BASE}/streaming.create_token"
-API_STREAM_START     = f"{HEYGEN_BASE}/streaming.start"
-API_STREAM_TASK      = f"{HEYGEN_BASE}/streaming.task"
-API_STREAM_STOP      = f"{HEYGEN_BASE}/streaming.stop"
+# =========================
+# HeyGen base/auth toggles (Render/Docker safe)
+# =========================
+# Some orgs require https://openapi.heygen.com; others use https://api.heygen.com
+HEYGEN_API_BASE   = os.getenv("HEYGEN_API_BASE", "https://api.heygen.com").rstrip("/")
+# Two common styles: "x-api-key" (default) or "bearer"
+HEYGEN_AUTH_STYLE = os.getenv("HEYGEN_AUTH_STYLE", "x-api-key").strip().lower()
+DEBUG_HEYGEN      = os.getenv("DEBUG_HEYGEN", "0") == "1"
+
+def _hg_url(path: str) -> str:
+    # path like "streaming.new"
+    return f"{HEYGEN_API_BASE}/v1/{path.lstrip('/')}"
+
+API_STREAM_NEW   = _hg_url("streaming.new")
+API_CREATE_TOKEN = _hg_url("streaming.create_token")
+API_STREAM_START = _hg_url("streaming.start")
+API_STREAM_TASK  = _hg_url("streaming.task")
+API_STREAM_STOP  = _hg_url("streaming.stop")
 
 def _hg_headers_api() -> Dict[str, str]:
-    return {"accept": "application/json", "x-api-key": HEYGEN_API_KEY, "content-type": "application/json"}
+    # Headers used before we have a bearer session token
+    if HEYGEN_AUTH_STYLE == "bearer":
+        return {"accept": "application/json",
+                "authorization": f"Bearer {HEYGEN_API_KEY}",
+                "content-type": "application/json"}
+    # default: x-api-key
+    return {"accept": "application/json",
+            "x-api-key": HEYGEN_API_KEY,
+            "content-type": "application/json"}
 
 def _hg_headers_bearer(tok: str) -> Dict[str, str]:
-    return {"accept": "application/json", "authorization": f"Bearer {tok}", "content-type": "application/json"}
+    # Headers after we have a session token from HeyGen
+    return {"accept": "application/json",
+            "authorization": f"Bearer {tok}",
+            "content-type": "application/json"}
+
+if DEBUG_HEYGEN:
+    logger.info("[HEYGEN] base=%s style=%s key_present=%s",
+                HEYGEN_API_BASE, HEYGEN_AUTH_STYLE, bool(HEYGEN_API_KEY))
 
 # =========================
 # In-memory session cache
@@ -134,7 +161,7 @@ async def fe_log(payload: Dict[str, Any]):
     return {"ok": True}
 
 # =========================
-# Diagnostics (quick env/ffmpeg check)
+# Diagnostics / Health
 # =========================
 def ffmpeg_ok() -> bool:
     try:
@@ -157,6 +184,16 @@ def diag():
         }
     }
 
+@app.get("/api/health")
+def health():
+    return {
+        "ok": True,
+        "has_openai": bool(OPENAI_API_KEY),
+        "has_heygen": bool(HEYGEN_API_KEY),
+        "heygen_base": HEYGEN_API_BASE,
+        "heygen_auth_style": HEYGEN_AUTH_STYLE,
+    }
+
 # =====================================================
 #                HEYGEN  — START / STOP
 # =====================================================
@@ -176,7 +213,7 @@ def _pick_ice(body: Dict[str, Any]) -> Dict[str, Any]:
     return {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
 
 @app.post("/api/start-session")
-def start_session(payload: Dict[str, Any] = None):
+def start_session(payload: Dict[str, Any] = Body(None)):
     _assert_heygen()
     body = payload or {}
     avatar_id = (body.get("avatar_id") or DEFAULT_AVATAR_ID).strip()
@@ -184,7 +221,8 @@ def start_session(payload: Dict[str, Any] = None):
     pose_name = (body.get("pose_name") or DEFAULT_POSE_NAME).strip()
 
     new_payload = {"avatar_id": avatar_id}
-    if voice_id: new_payload["voice_id"] = voice_id
+    if voice_id:
+        new_payload["voice_id"] = voice_id
 
     logger.info(f"[HEYGEN] streaming.new -> payload={json.dumps(new_payload)}")
     r_new = requests.post(API_STREAM_NEW, headers=_hg_headers_api(), json=new_payload, timeout=30)
@@ -253,7 +291,7 @@ def heygen_start(session_id: str = Form(...), answer_sdp: str = Form(...), sessi
     return {"ok": True, "upstream": r.status_code}
 
 @app.post("/api/stop-session")
-def stop_session(payload: Dict[str, Any] = None):
+def stop_session(payload: Dict[str, Any] = Body(None)):
     _assert_heygen()
     data = payload or {}
     sid = (data.get("session_id") or _active_session.get("session_id"))
@@ -275,7 +313,7 @@ def stop_session(payload: Dict[str, Any] = None):
 #                HEYGEN  — SEND TASK
 # =====================================================
 @app.post("/api/send-task")
-def send_task(payload: Dict[str, Any]):
+def send_task(payload: Dict[str, Any] = Body(...)):
     if not HEYGEN_API_KEY:
         raise HTTPException(500, "Missing HEYGEN_API_KEY")
     text = (payload or {}).get("text", "").strip()
@@ -429,7 +467,7 @@ def _perfume_system_prompt_english_only() -> str:
     )
 
 # =====================================================
-#   NEW: OPENAI — Perfume explanation for tile buttons
+#   OPENAI — Perfume explanation for tile buttons
 # =====================================================
 @app.post("/api/perfume-explain")
 async def perfume_explain(name: str = Form(...)):
@@ -470,7 +508,6 @@ async def perfume_explain(name: str = Form(...)):
 
 # =====================================================
 #      AUDIO → RESPONSES API (voicechat) via raw HTTPS
-#      (unchanged)
 # =====================================================
 @app.post("/api/voicechat")
 async def voicechat(file: UploadFile = File(...)):
@@ -587,56 +624,3 @@ async def transcribe(file: UploadFile = File(...)):
 @app.get("/api/ping")
 def ping():
     return {"ok": True}
-# =====================================================
-# API Check
-# =====================================================
-@app.get("/api/health")
-def health():
-    return {
-        "ok": True,
-        "has_openai": bool(os.getenv("OPENAI_API_KEY")),
-        "has_heygen": bool(os.getenv("HEYGEN_API_KEY")),
-    }
-# ---- Simple LLM helper so /api/perfume-explain works ----
-import os, requests
-from fastapi import Body
-
-OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip()
-OPENAI_BASE = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")  # pick any you have access to
-
-@app.post("/api/perfume-explain")
-def perfume_explain(payload: dict = Body(...)):
-    """
-    payload: { "title": "...", "note": "...", "style": "..." }
-    returns: { "text": "..." }
-    """
-    if not OPENAI_API_KEY:
-        raise HTTPException(500, "OPENAI_API_KEY not set")
-
-    # build a simple prompt from tiles
-    title = (payload.get("title") or "").strip()
-    note  = (payload.get("note") or "").strip()
-    style = (payload.get("style") or "crisp").strip()
-
-    prompt = f"Explain the theme '{title}'. Extra: {note}. Style: {style}. 120 words."
-
-    r = requests.post(
-        f"{OPENAI_BASE}/chat/completions",
-        headers={"Authorization": f"Bearer {OPENAI_API_KEY}",
-                 "Content-Type": "application/json"},
-        json={"model": OPENAI_MODEL, "messages": [{"role": "user", "content": prompt}], "temperature": 0.3},
-        timeout=30
-    )
-    try:
-        j = r.json()
-    except Exception:
-        raise HTTPException(502, f"OpenAI error: {r.text[:200]}")
-
-    if r.status_code >= 400:
-        raise HTTPException(502, f"OpenAI error: {j}")
-
-    text = (j.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
-    return {"text": text or "(no content)"}
-
-

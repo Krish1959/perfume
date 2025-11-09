@@ -84,6 +84,16 @@
     };
   </script>
 
+  <!-- NEW: point the frontend to the backend on Render -->
+  <script>
+    // If not running from file:// or localhost, use the deployed backend:
+    if (!window.API_BASE) {
+      window.API_BASE = (location.protocol === "file:" || location.hostname === "localhost")
+        ? "http://localhost:8000"
+        : "https://perfume-backend-yt2m.onrender.com";
+    }
+  </script>
+
   <script src="./perfume.js"></script>
 </body>
 </html>

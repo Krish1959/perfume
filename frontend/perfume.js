@@ -1,12 +1,15 @@
 // -----------------------------------------------------
-// API base: works for both file:// and http://
-// If index.html already set window.API_BASE, keep it.
-if (!window.API_BASE || typeof window.API_BASE !== "string") {
-  window.API_BASE =
-    (location.protocol === "file:" || location.hostname === "localhost")
+// API base: force a valid backend URL in ALL cases.
+(function(){
+  const isLocal = location.protocol === "file:" ||
+                  location.hostname === "localhost" ||
+                  location.hostname.startsWith("127.");
+  if (!window.API_BASE || typeof window.API_BASE !== "string" || window.API_BASE.trim() === "") {
+    window.API_BASE = isLocal
       ? "http://localhost:8000"
-      : "";
-}
+      : "https://perfume-backend-yt2m.onrender.com";
+  }
+})();
 
 // ---------- helpers ----------
 function $(id){ return document.getElementById(id); }
@@ -80,9 +83,9 @@ gateBtn.addEventListener("click", ensureAudio);
 // ---------- start/stop session ----------
 async function startSession() {
   const body = {
-    avatar_id: window.HEYGEN_FIXED && window.HEYGEN_FIXED.avatar_id ? window.HEYGEN_FIXED.avatar_id : "June_HR_public",
-    voice_id:  window.HEYGEN_FIXED && window.HEYGEN_FIXED.voice_id  ? window.HEYGEN_FIXED.voice_id  : "68dedac41a9f46a6a4271a95c733823c",
-    pose_name: window.HEYGEN_FIXED && window.HEYGEN_FIXED.pose_name ? window.HEYGEN_FIXED.pose_name : "June HR"
+    avatar_id: (window.HEYGEN_FIXED && window.HEYGEN_FIXED.avatar_id) || "June_HR_public",
+    voice_id:  (window.HEYGEN_FIXED && window.HEYGEN_FIXED.voice_id)  || "68dedac41a9f46a6a4271a95c733823c",
+    pose_name: (window.HEYGEN_FIXED && window.HEYGEN_FIXED.pose_name) || "June HR"
   };
   await flog("viewer", "Start button pressed", body);
   setStatus("requesting viewer params…");
@@ -116,8 +119,7 @@ async function startSession() {
     pc.addTransceiver("video", { direction: "recvonly" });
 
     pc.ontrack = (ev) => {
-      const streams = ev.streams || [];
-      const stream = streams[0];
+      const [stream] = ev.streams || [];
       if (!stream) return;
       if (ev.track.kind === "video") {
         videoEl.srcObject = stream;

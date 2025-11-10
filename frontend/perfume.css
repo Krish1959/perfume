@@ -2,7 +2,6 @@
    Perfume – UI Styles (clean)
    =========================== */
 
-/* Base / Reset */
 :root {
   --bg: #0b0b0c;
   --panel: #121213;
@@ -30,14 +29,12 @@ html, body {
   font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
 }
 
-/* App container (center everything) */
 .perfume-app {
   max-width: 1000px;
   margin: 0 auto;
   padding: 18px 14px 40px;
 }
 
-/* Headings / Labels */
 .avatar-title {
   margin: 6px 0 10px;
   font-size: 15px;
@@ -47,7 +44,7 @@ html, body {
   letter-spacing: .2px;
 }
 
-/* Avatar Stage (B) */
+/* Avatar Stage */
 .avatar-stage {
   position: relative;
   background: var(--panel);
@@ -68,15 +65,24 @@ html, body {
   display: block;
 }
 
+#avatarPlaceholder {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #0a0a0a;
+}
+
+/* audio gate */
 .avatar-overlay {
   position: absolute;
   inset: 0;
-  display: none;               /* shown by JS when needed */
+  display: none;
   align-items: center;
   justify-content: center;
   background: radial-gradient(transparent 50%, rgba(0,0,0,.45));
 }
-
 #enableBtn {
   appearance: none;
   border: 1px solid var(--border-2);
@@ -91,7 +97,7 @@ html, body {
 }
 #enableBtn:hover { transform: translateY(-1px); border-color: var(--border); }
 
-/* C: status line */
+/* Status */
 .status-bar {
   margin: 10px auto 0;
   text-align: center;
@@ -119,60 +125,56 @@ html, body {
   resize: vertical;
 }
 
-.chat-buttons {
+/* single row buttons with overflow scroll on small devices */
+.controls-row {
   display: flex;
-  gap: 12px;
-  width: 100%;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
 }
-
-.mic-button,
-.chat-buttons button {
-  flex: 1;
+.controls-row button,
+.mic-button {
+  flex: 0 0 auto;            /* keep in one row */
+  min-width: 68px;           /* compact */
   appearance: none;
   border: 1px solid var(--border);
   background: var(--panel);
   color: var(--text);
   border-radius: var(--radius-md);
-  padding: 12px 14px;
-  font-weight: 600;
-  font-size: 14px;
+  padding: 10px 12px;
+  font-weight: 700;
+  font-size: 13px;
   letter-spacing: .2px;
   cursor: pointer;
   transition: transform .06s ease, background .12s ease, border-color .12s ease;
 }
-.mic-button:hover,
-.chat-buttons button:hover {
+.controls-row button:hover,
+.mic-button:hover {
   background: #1e1f23;
   border-color: var(--border-2);
   transform: translateY(-1px);
 }
 
-/* Recording button state */
+/* Recording state: show End label color */
 .mic-button.recording {
   background: #6b1a1a;
   border-color: #a64;
 }
 
-/* K: Perfume Gallery (one centered row on wide view, wraps gracefully) */
-.perfume-gallery {
+/* Perfume Gallery: one row, horizontally scrollable */
+.perfume-gallery.one-row {
   margin-top: 18px;
-  display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  display: flex;
   gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  -webkit-overflow-scrolling: touch;
 }
-@media (max-width: 980px) {
-  .perfume-gallery { grid-template-columns: repeat(4, minmax(150px, 1fr)); }
-}
-@media (max-width: 760px) {
-  .perfume-gallery { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
-}
-@media (max-width: 520px) {
-  .perfume-gallery { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
-}
-
 .perfume-item {
   display: block;
-  padding: 0;
+  flex: 0 0 160px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -208,5 +210,4 @@ html, body {
 }
 @media (max-width: 560px) {
   .avatar-stage { height: 280px; }
-  .chat-buttons { flex-direction: column; gap: 10px; }
 }

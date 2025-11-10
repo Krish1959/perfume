@@ -1,21 +1,19 @@
 // -----------------------------------------------------
-// API base: force a valid backend URL in ALL cases.
+// API base: robust selection for local vs Render
 (function(){
   const isLocal = location.protocol === "file:" ||
                   location.hostname === "localhost" ||
                   location.hostname.startsWith("127.");
-  if (!window.API_BASE || typeof window.API_BASE !== "string" || window.API_BASE.trim() === "") {
+  if (!window.API_BASE || typeof window.API_BASE !== "string" || !window.API_BASE.trim()) {
     window.API_BASE = isLocal
       ? "http://localhost:8000"
       : "https://perfume-backend-yt2m.onrender.com";
   }
 })();
 
-// ---------- helpers ----------
+// Helpers
 function $(id){ return document.getElementById(id); }
 function setStatus(msg){ $("viewerStatus").textContent = msg; }
-
-// On-page debug + send to server
 function uiLog(area, message, extra = {}) {
   try {
     const box = $("uiDebug");
@@ -29,19 +27,19 @@ async function flog(area, message, extra = {}, level = "INFO") {
   uiLog(area, message, extra);
   try {
     await fetch(`${window.API_BASE}/api/log`, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
+      method: "POST", headers: {"Content-Type":"application/json"},
       body: JSON.stringify({ area, message, extra, level })
     });
   } catch {}
 }
 
-// ---------- refs ----------
+// Refs
 const nameEl   = $("aname");
 const videoEl  = $("avatarVideo");
 const audioEl  = $("avatarAudio");
 const gateEl   = $("audioGate");
 const gateBtn  = $("enableBtn");
+const placeholderEl = $("avatarPlaceholder");
 
 const editBox  = $("editBox");
 const micBtn   = $("btn-mic");
@@ -51,11 +49,11 @@ const gptBtn   = $("btn-chatgpt");
 const startBtn = $("btn-start");
 const stopBtn  = $("btn-stop");
 
-// ---------- state ----------
+// State
 let SESSION_ID = null, SESSION_TOKEN = null, OFFER_SDP = null, pc = null;
 let RTC_CONFIG = { iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }] };
 
-// ---------- initial ping ----------
+// Initial ping
 (async () => {
   try {
     const r = await fetch(`${window.API_BASE}/api/ping`);
@@ -67,25 +65,22 @@ let RTC_CONFIG = { iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }] };
   }
 })();
 
-// ---------- audio gate ----------
+// Audio gate
 async function ensureAudio() {
-  try {
-    audioEl.muted = false;
-    audioEl.volume = 1.0;
-    await audioEl.play();
-    gateEl.style.display = "none";
-  } catch {
-    gateEl.style.display = "flex";
-  }
+  try { audioEl.muted = false; audioEl.volume = 1.0; await audioEl.play(); gateEl.style.display = "none"; }
+  catch { gateEl.style.display = "flex"; }
 }
 gateBtn.addEventListener("click", ensureAudio);
 
-// ---------- start/stop session ----------
+// Start/Stop session
 async function startSession() {
+  // hide placeholder when starting
+  placeholderEl.style.display = "none";
+
   const body = {
-    avatar_id: (window.HEYGEN_FIXED && window.HEYGEN_FIXED.avatar_id) || "June_HR_public",
-    voice_id:  (window.HEYGEN_FIXED && window.HEYGEN_FIXED.voice_id)  || "68dedac41a9f46a6a4271a95c733823c",
-    pose_name: (window.HEYGEN_FIXED && window.HEYGEN_FIXED.pose_name) || "June HR"
+    avatar_id: window.HEYGEN_FIXED?.avatar_id || "June_HR_public",
+    voice_id:  window.HEYGEN_FIXED?.voice_id  || "68dedac41a9f46a6a4271a95c733823c",
+    pose_name: window.HEYGEN_FIXED?.pose_name || "June HR"
   };
   await flog("viewer", "Start button pressed", body);
   setStatus("requesting viewer params…");
@@ -93,9 +88,7 @@ async function startSession() {
   let j = null;
   try {
     const r = await fetch(`${window.API_BASE}/api/start-session`, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(body)
+      method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(body)
     });
     j = await r.json().catch(()=>({}));
     await flog("viewer", "/api/start-session response", { http: r.status, body: j });
@@ -103,6 +96,8 @@ async function startSession() {
   } catch (e) {
     await flog("viewer", "start-session failed", { err: String(e) }, "ERROR");
     setStatus("init error (start-session)");
+    // show placeholder back on error
+    placeholderEl.style.display = "";
     return;
   }
 
@@ -122,12 +117,9 @@ async function startSession() {
       const [stream] = ev.streams || [];
       if (!stream) return;
       if (ev.track.kind === "video") {
-        videoEl.srcObject = stream;
-        videoEl.muted = true;
-        videoEl.play().catch(()=>{});
+        videoEl.srcObject = stream; videoEl.muted = true; videoEl.play().catch(()=>{});
       } else if (ev.track.kind === "audio") {
-        audioEl.srcObject = stream;
-        setTimeout(ensureAudio, 100);
+        audioEl.srcObject = stream; setTimeout(ensureAudio, 100);
       }
     };
 
@@ -140,11 +132,7 @@ async function startSession() {
 
     await new Promise(res => {
       if (pc.iceGatheringState === "complete") return res();
-      const h = () => {
-        if (pc.iceGatheringState === "complete") {
-          pc.removeEventListener("icegatheringstatechange", h); res();
-        }
-      };
+      const h = () => { if (pc.iceGatheringState === "complete") { pc.removeEventListener("icegatheringstatechange", h); res(); } };
       pc.addEventListener("icegatheringstatechange", h);
       setTimeout(res, 1500);
     });
@@ -158,7 +146,6 @@ async function startSession() {
     const rStart = await fetch(`${window.API_BASE}/api/heygen/start`, { method: "POST", body: fd });
     const jStart = await rStart.json().catch(()=>({}));
     await flog("viewer", "/api/heygen/start response", { http: rStart.status, body: jStart });
-
     if (rStart.status >= 400) throw new Error("heygen.start failed");
 
     setStatus("waiting for media…");
@@ -166,6 +153,7 @@ async function startSession() {
   } catch (e) {
     await flog("viewer", "webrtc/start error", { err: String(e) }, "ERROR");
     setStatus("init error (webrtc)");
+    placeholderEl.style.display = "";
   }
 }
 
@@ -179,16 +167,18 @@ async function stopSession() {
     await flog("viewer", "stop-session error", { err: String(e) }, "ERROR");
   }
   if (pc) { try { pc.close(); } catch {} pc = null; }
+  // show placeholder after stop
+  placeholderEl.style.display = "";
   setStatus("stopped.");
 }
 window.addEventListener("beforeunload", () => {
   try { navigator.sendBeacon(`${window.API_BASE}/api/stop-session`, new FormData()); } catch {}
 });
-
+window.__startSession = startSession;
 startBtn.addEventListener("click", startSession);
 stopBtn.addEventListener("click", stopSession);
 
-// ---------- send to avatar ----------
+// Send to avatar
 sendBtn.addEventListener("click", async () => {
   const text = (editBox.value || "").trim();
   if (!text) return;
@@ -198,54 +188,38 @@ sendBtn.addEventListener("click", async () => {
   await flog("viewer", "Send to avatar clicked", { text_len: text.length });
 
   const r = await fetch(`${window.API_BASE}/api/send-task`, {
-    method: "POST",
-    headers: {"Content-Type":"application/json"},
-    body: JSON.stringify(payload)
+    method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload)
   });
   const j = await r.json().catch(()=>({}));
   await flog("viewer", "/api/send-task response", { http: r.status, body: j });
 });
 
-// ---------- instruction ----------
+// Instruction
 instrBtn.addEventListener("click", async () => {
-  const msg = "To speak to me, press the microphone button, pause a second and then speak. Once finished, press Stop.";
+  const msg = "To speak to me, press 🎙️ Rec, pause a second and then speak. Press 🛑 End when finished.";
   editBox.value = msg;
   await flog("viewer", "Instruction pressed", { text: msg });
   sendBtn.click();
 });
 
-// ---------- ChatGPT ----------
+// ChatGPT passthrough (unchanged behavior)
 gptBtn.addEventListener("click", async () => {
   const text = (editBox.value || "").trim();
-  if (!text) {
-    await flog("chatgpt", "Send to ChatGPT pressed (empty text)");
-  } else {
-    await flog("chatgpt", "Send to ChatGPT pressed", { text_len: text.length });
-  }
-  setStatus("Sending to ChatGPT…");
+  const fd = new FormData(); fd.append("text", text || "Hello");
+  await flog("chatgpt", "Send to ChatGPT pressed", { text_len: (text||"").length });
 
   try {
-    const fd = new FormData();
-    fd.append("text", text || "Hello");
-
     const r = await fetch(`${window.API_BASE}/api/chat`, { method: "POST", body: fd });
-    const j = await r.json().catch(()=>({}));
-    await flog("chatgpt", "/api/chat response", { http: r.status, body_len: (j && j.response ? j.response.length : 0) });
+    const j = await r.json();
+    await flog("chatgpt", "/api/chat response", { http: r.status, body_len: (j?.response || "").length });
 
-    if (r.status >= 400) {
-      setStatus("OpenAI error (see debug box)");
-      return;
-    }
-
-    const reply = (j && j.response ? j.response : "").trim();
+    const reply = (j.response || "").trim();
     if (reply) {
       editBox.value = reply;
       if (SESSION_ID && SESSION_TOKEN) {
         const payload = { session_id: SESSION_ID, session_token: SESSION_TOKEN, text: reply };
         fetch(`${window.API_BASE}/api/send-task`, {
-          method: "POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify(payload)
+          method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload)
         }).catch(()=>{});
       }
     }
@@ -256,9 +230,8 @@ gptBtn.addEventListener("click", async () => {
   }
 });
 
-// ---------- mic + voicechat ----------
+// Mic + transcription (toggle labels Rec/End)
 let mediaRecorder = null, chunks = [], audioCtx = null, analyser = null, sourceNode = null, raf = 0;
-let recT0 = 0;
 
 function chooseMime() {
   const c = [
@@ -271,9 +244,8 @@ function chooseMime() {
 }
 
 async function startRecording() {
-  await flog("mic", "StartRecording pressed");
+  await flog("mic", "Mic pressed");
   try {
-    editBox.value = "";
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
     });
@@ -286,89 +258,57 @@ async function startRecording() {
     mediaRecorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
 
     mediaRecorder.onstop = async () => {
-      const recT1 = Date.now();
-      cancelAnimationFrame(raf);
-      if (sourceNode) { try { sourceNode.disconnect(); } catch {} }
-
-      const totalBytes = chunks.reduce((a,b)=>a+(b.size||0),0);
-      await flog("mic", "EndRecording fired", { chunks: chunks.length, totalBytes, duration_ms: recT1 - recT0 });
-
+      cancelAnimationFrame(raf); if (sourceNode) try { sourceNode.disconnect(); } catch {}
       try {
-        const type = (chunks[0] && chunks[0].type) ? chunks[0].type : (mediaRecorder && mediaRecorder.mimeType ? mediaRecorder.mimeType : (mimeType || "audio/webm"));
-        const blob = new Blob(chunks, { type });
-        const file = new File([blob], "mic.webm", { type });
-
-        const fd = new FormData();
-        fd.append("file", file);
-
-        setStatus("Sending to ChatGPT…");
-        await flog("mic", "sending to /api/voicechat", { type, size: blob.size });
-
-        const r = await fetch(`${window.API_BASE}/api/voicechat`, { method: "POST", body: fd });
+        const blob = new Blob(chunks, { type: mediaRecorder.mimeType || mimeType || "audio/webm" });
+        const ext  = blob.type.includes("mp4") ? "m4a" : blob.type.includes("ogg") ? "ogg"
+                    : blob.type.includes("mpeg") ? "mp3" : "webm";
+        const fd = new FormData(); fd.append("file", new File([blob], `rec.${ext}`, { type: blob.type }));
+        await flog("mic", "sending to /api/transcribe", { type: blob.type, size: blob.size });
+        const r = await fetch(`${window.API_BASE}/api/transcribe`, { method: "POST", body: fd });
         const j = await r.json().catch(()=>({}));
-        await flog("mic", "/api/voicechat response", { http: r.status, body_len: (j && j.text ? j.text.length : 0) });
-
-        if (j && typeof j.text === "string") {
-          editBox.value = j.text.trim();
-          setStatus("Ready.");
-        } else {
-          setStatus("Voicechat returned no text.");
-        }
+        await flog("mic", "/api/transcribe response", { http: r.status, body: j });
+        if (j && j.text) editBox.value = j.text;
+        setStatus("Ready.");
       } catch (e) {
-        await flog("mic", "voicechat error", { err: String(e) }, "ERROR");
-        setStatus("Voicechat error");
+        setStatus(`Transcription error: ${e?.message || e}`);
       } finally {
-        try { stream.getTracks().forEach(t => t.stop()); } catch {}
-        mediaRecorder = null;
-        micBtn.classList.remove("recording");
-        micBtn.textContent = "🎙️ Start Recording";
+        stream.getTracks().forEach(t => t.stop()); mediaRecorder = null;
+        micBtn.textContent = "🎙️ Rec"; micBtn.classList.remove("recording");
       }
     };
 
-    mediaRecorder.start();
-    recT0 = Date.now();
-
-    setStatus("Listening… press again to stop");
+    mediaRecorder.start(150);
+    setStatus("Listening… press 🛑 End to stop");
     micBtn.classList.add("recording");
-    micBtn.textContent = "⏹ End Recording";
+    micBtn.textContent = "🛑 End";
+
     const tick = () => { raf = requestAnimationFrame(tick); }; tick();
   } catch (err) {
     await flog("mic", "permission/error", { err: String(err) }, "ERROR");
     setStatus(`Mic permission denied / ${err.message || err}`);
-    micBtn.classList.remove("recording");
-    micBtn.textContent = "🎙️ Start Recording";
   }
 }
-function stopRecording(){
-  if (mediaRecorder) {
-    try { mediaRecorder.stop(); } catch {}
-  }
-}
-micBtn.addEventListener("click", () => {
-  if (mediaRecorder) { stopRecording(); }
-  else { startRecording(); }
-});
+function stopRecording(){ if (mediaRecorder) { try { mediaRecorder.stop(); } catch {} } }
+micBtn.addEventListener("click", () => { if (mediaRecorder) stopRecording(); else startRecording(); });
 
-// ---------- NEW: explainPerfume helper ----------
+// Perfume tiles -> explain + (if session) speak
 async function explainPerfume(name) {
-  const nm = (name || "").trim();
-  if (!nm) return;
+  const nm = (name || "").trim(); if (!nm) return;
 
   editBox.value = nm;
   await flog("tiles", "tile pressed", { name: nm });
+
   if (SESSION_ID && SESSION_TOKEN) {
     const payload = { session_id: SESSION_ID, session_token: SESSION_TOKEN, text: nm };
     fetch(`${window.API_BASE}/api/send-task`, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(payload)
+      method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload)
     }).catch(()=>{});
   }
 
   try {
     setStatus("Getting perfume details…");
-    const fd = new FormData();
-    fd.append("name", nm);
+    const fd = new FormData(); fd.append("name", nm);
     const r = await fetch(`${window.API_BASE}/api/perfume-explain`, { method: "POST", body: fd });
     const j = await r.json().catch(()=>({}));
     await flog("tiles", "/api/perfume-explain response", { http: r.status, body_len: (j && j.response ? j.response.length : 0) });
@@ -381,9 +321,7 @@ async function explainPerfume(name) {
       if (SESSION_ID && SESSION_TOKEN) {
         const payload = { session_id: SESSION_ID, session_token: SESSION_TOKEN, text: reply };
         fetch(`${window.API_BASE}/api/send-task`, {
-          method: "POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify(payload)
+          method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify(payload)
         }).catch(()=>{});
       }
     }
@@ -394,14 +332,9 @@ async function explainPerfume(name) {
   }
 }
 
-// ---------- tiles ----------
 $("perfumeGrid").addEventListener("click", async (e) => {
-  const fig = e.target.closest(".perfume-item");
-  if (!fig) return;
-
-  const cap = fig.querySelector("figcaption");
-  const say = (fig.getAttribute("data-say") || (cap ? cap.textContent : "") || "").trim();
-  if (!say) return;
-
+  const fig = e.target.closest(".perfume-item"); if (!fig) return;
+  const say = fig.getAttribute("data-say") || fig.querySelector("figcaption")?.textContent || "";
+  if (!say.trim()) return;
   explainPerfume(say);
 });

@@ -4,16 +4,19 @@
   <meta charset="utf-8" />
   <title>Perfume — Local HTML + FastAPI</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <!-- Local CSS (works for file:// and http:// when served together) -->
   <link rel="stylesheet" href="./perfume.css" />
 </head>
 <body>
   <main class="perfume-app">
-    <!-- A: Avatar label -->
-    <div class="avatar-title">Avatar: <span id="aname">—</span></div>
+    <!-- Title -->
+    <div class="avatar-title">Perfume Sales Assistant: <span id="aname">—</span></div>
 
-    <!-- B: Avatar stage -->
+    <!-- Avatar Stage -->
     <section class="avatar-stage">
+      <!-- Static placeholder (shown when not live or after Stop) -->
+      <img id="avatarPlaceholder"
+           src="https://files2.heygen.ai/avatar/v3/74447a27859a456c955e01f21ef18216_45620/preview_talk_1.webp"
+           alt="Avatar preview" />
       <video id="avatarVideo" playsinline muted></video>
       <audio id="avatarAudio"></audio>
       <div id="audioGate" class="avatar-overlay">
@@ -21,36 +24,34 @@
       </div>
     </section>
 
-    <!-- C: viewer status line -->
-    <div id="viewerStatus" class="status-bar">Click “Start Session” to initialize the avatar…</div>
+    <!-- Status line -->
+    <div id="viewerStatus" class="status-bar">Ready.</div>
 
-    <!-- D/E/F: input + main controls -->
+    <!-- Input + Controls -->
     <section class="controls-wrap">
       <textarea id="editBox" class="transcribe-box" placeholder="Message…">Hello, who are you?</textarea>
 
-      <div class="chat-buttons">
-        <button id="btn-mic" class="mic-button">🎙️ Start Recording</button>
-        <button id="btn-send-avatar">💬 Send to Avatar</button>
-      </div>
-
-      <div class="chat-buttons">
-        <button id="btn-instruction">Instruction</button>
-        <button id="btn-chatgpt">Send to ChatGPT</button>
-        <button id="btn-start">▶ Start Session</button>
-        <button id="btn-stop">⏹ Stop Session</button>
+      <!-- All six controls in ONE row (compact labels) -->
+      <div class="controls-row" id="controlsRow">
+        <button id="btn-mic" class="mic-button" title="Start/End Recording">🎙️ Rec</button>
+        <button id="btn-send-avatar" title="Send to Avatar">💬 Avt</button>
+        <button id="btn-instruction"  title="Instruction">Ins</button>
+        <button id="btn-chatgpt"      title="Send to ChatGPT">GPT</button>
+        <button id="btn-start"        title="Start Session">▶ SS</button>
+        <button id="btn-stop"         title="End Session">⏹ ES</button>
       </div>
     </section>
 
-    <!-- K: tiles -->
+    <!-- Perfume tiles: single horizontal row -->
     <h3 style="margin:24px 4px 10px">Perfume Collection</h3>
-    <section id="perfumeGrid" class="perfume-gallery">
+    <section id="perfumeGrid" class="perfume-gallery one-row">
       <figure class="perfume-item" data-say="Endless mountains & rivers.">
         <img src="./assets/1_Endless_rivers.png" alt="Endless Mountains & Rivers" />
         <figcaption>Endless Mountains & Rivers</figcaption>
       </figure>
 
       <figure class="perfume-item" data-say="Flowing gently into calm.">
-        <img src="./assets/2_Flowing_Calm.png" alt="Flowing Calm" />
+        <img src="./assets/2_Flowing_Calm.png" alt="Flowing Gently Into Calm" />
         <figcaption>Flowing Gently Into Calm</figcaption>
       </figure>
 
@@ -65,17 +66,17 @@
       </figure>
 
       <figure class="perfume-item" data-say="Rain in the hills.">
-        <img src="./assets/5_Rain_hills.png" alt="Rain in the Hills" />
+        <img src="./assets/5_Rain_Hills.png" alt="Rain in the Hills" />
         <figcaption>Rain in the Hills</figcaption>
       </figure>
     </section>
 
-    <!-- On-page debug console (bottom) -->
+    <!-- Debug console (unchanged) -->
     <h3 style="margin:26px 4px 10px">Debug Console</h3>
     <textarea id="uiDebug" class="transcribe-box" style="min-height:130px" readonly></textarea>
   </main>
 
-  <!-- Fix the chosen avatar/voice/pose (can still be overridden by .env on the backend) -->
+  <!-- Fixed avatar/voice/pose (still overridable by backend env) -->
   <script>
     window.HEYGEN_FIXED = {
       avatar_id: "June_HR_public",
@@ -84,13 +85,13 @@
     };
   </script>
 
-  <!-- Safe API base selection (works for file://, localhost, Render, GitHub Pages) -->
+  <!-- Robust API base selection -->
   <script>
     (function(){
       const isLocal = location.protocol === "file:" ||
                       location.hostname === "localhost" ||
                       location.hostname.startsWith("127.");
-      if (!window.API_BASE || typeof window.API_BASE !== "string") {
+      if (!window.API_BASE || typeof window.API_BASE !== "string" || !window.API_BASE.trim()) {
         window.API_BASE = isLocal
           ? "http://localhost:8000"
           : "https://perfume-backend-yt2m.onrender.com";
@@ -99,5 +100,15 @@
   </script>
 
   <script src="./perfume.js"></script>
+
+  <!-- Auto-start same routine as ▶ SS on power on (optional, keeps your earlier behavior) -->
+  <script>
+    window.addEventListener("load", () => {
+      if (typeof window.__startSession === "function") {
+        // Comment out the next line if you prefer manual start
+        // window.__startSession();
+      }
+    });
+  </script>
 </body>
 </html>
